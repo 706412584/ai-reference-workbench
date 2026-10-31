@@ -153,12 +153,23 @@ export default function LibraryPanel({
         </button>
       </div>
 
+      {/* 不能 display:none：Android WebView 81 会拦截隐藏 input 的程序化 click()。
+          用 opacity+绝对定位做到视觉隐藏但仍可触发。 */}
       <input
         ref={fileRef}
         type="file"
         accept="image/*,video/*"
         multiple
-        style={{ display: 'none' }}
+        style={{
+          position: 'absolute',
+          width: 1,
+          height: 1,
+          opacity: 0,
+          overflow: 'hidden',
+          clip: 'rect(0 0 0 0)',
+          border: 0,
+          padding: 0,
+        }}
         onChange={e => {
           upload(e.target.files)
           e.target.value = ''

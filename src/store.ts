@@ -14,11 +14,19 @@ export function usePersisted<T>(key: string, initial: T) {
     return initial
   })
 
+  // 当前值的序列化副本，用于识别「自己广播的」事件。
+  // 不能只靠 setValue 的引用比较：JSON.parse 每次都产生新对象，
+  // 若自身监听器也 setValue，就会 写入→广播→setValue→写入 无限自激。
+  const rawRef = useRef<string | null>(null)
+  rawRef.current = JSON.stringify(value)
+
   // 同页多实例同步：本实例写入后广播，其他实例据此更新
   useEffect(() => {
     const onSync = (e: Event) => {
       const detail = (e as CustomEvent).detail as { key: string; value: string }
       if (!detail || detail.key !== key) return
+      // 自己刚写出去的值，直接忽略（否则自激循环）
+      if (detail.value === rawRef.current) return
       try {
         setValue(JSON.parse(detail.value) as T)
       } catch {

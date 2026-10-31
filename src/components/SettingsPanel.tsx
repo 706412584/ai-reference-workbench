@@ -171,7 +171,7 @@ export default function SettingsPanel({
       <section className="set-group">
         <h4>显示</h4>
 
-        <label className="set-row">
+        <div className="set-row">
           <span>每行卡片数（宽屏）</span>
           <Select
             value={String(draft.gridCols)}
@@ -179,7 +179,7 @@ export default function SettingsPanel({
             options={[3, 4, 5, 6].map(n => ({ value: String(n), label: String(n) }))}
             onChange={v => set('gridCols', Number(v))}
           />
-        </label>
+        </div>
 
         <label className="set-row">
           <span>隐藏成人向分类</span>
@@ -209,7 +209,7 @@ export default function SettingsPanel({
       <section className="set-group">
         <h4>提示词</h4>
 
-        <label className="set-row">
+        <div className="set-row">
           <span>默认技能</span>
           <Select
             value={draft.defaultSkill}
@@ -221,9 +221,9 @@ export default function SettingsPanel({
             ]}
             onChange={v => set('defaultSkill', v as Settings['defaultSkill'])}
           />
-        </label>
+        </div>
 
-        <label className="set-row">
+        <div className="set-row">
           <span>默认输出语言</span>
           <Select
             value={draft.promptLang}
@@ -234,7 +234,7 @@ export default function SettingsPanel({
             ]}
             onChange={v => set('promptLang', v as Settings['promptLang'])}
           />
-        </label>
+        </div>
 
         <p className="set-hint">
           技能说明来自 MiniMax H3 的 h3-prompt-writing 与 Qwen-Image 的 prompt_utils_2512，

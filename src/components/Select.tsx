@@ -51,7 +51,12 @@ export default function Select({
         aria-expanded={open}
         aria-label={ariaLabel}
         disabled={disabled}
-        onClick={() => setOpen(o => !o)}
+        // 阻止外层 <label> 把这次点击再转发给按钮，造成二次 toggle
+        onClick={e => {
+          e.preventDefault()
+          e.stopPropagation()
+          setOpen(o => !o)
+        }}
       >
         <span className="sel-label">{current ? current.label : value || '请选择'}</span>
         <IconChevronDown size={14} />
@@ -66,7 +71,10 @@ export default function Select({
               role="option"
               aria-selected={o.value === value}
               className={'sel-opt' + (o.value === value ? ' on' : '')}
-              onClick={() => {
+              // preventDefault 同样防止 label 转发点击
+              onClick={e => {
+                e.preventDefault()
+                e.stopPropagation()
                 onChange(o.value)
                 setOpen(false)
               }}

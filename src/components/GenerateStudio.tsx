@@ -557,7 +557,16 @@ export default function GenerateStudio({
                 type="file"
                 accept="image/*"
                 multiple
-                style={{ display: 'none' }}
+                style={{
+                  position: 'absolute',
+                  width: 1,
+                  height: 1,
+                  opacity: 0,
+                  overflow: 'hidden',
+                  clip: 'rect(0 0 0 0)',
+                  border: 0,
+                  padding: 0,
+                }}
                 onChange={e => {
                   addFiles(e.target.files)
                   e.target.value = ''

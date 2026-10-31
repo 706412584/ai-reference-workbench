@@ -18,6 +18,8 @@ import android.view.WindowInsets;
 import android.view.Window;
 import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
+import android.webkit.ValueCallback;
+import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
@@ -44,11 +46,14 @@ public class MainActivity extends Activity {
     private static final String HOST = "app.local";
     private static final String START_URL = "https://" + HOST + "/index.html";
     private static final String ALBUM = "AI参考工作台";
+    private static final int REQ_PICK_FILE = 4101;
 
     private WebView web;
     private String pendingBackAction;
     private McpServer mcp;
     private AssetPackManager packs;
+    /** 待系统文件选择器回传的 WebView 回调 */
+    private ValueCallback<Uri[]> fileCallback;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -79,7 +84,9 @@ public class MainActivity extends Activity {
         s.setDomStorageEnabled(true);
         s.setDatabaseEnabled(true);
         s.setAllowFileAccess(false);
-        s.setAllowContentAccess(false);
+        // 必须允许 content://：文件选择器回传的是 content URI，
+        // 关掉会导致 FileReader 读不到用户选中的文件。
+        s.setAllowContentAccess(true);
         s.setSupportZoom(false);
         s.setBuiltInZoomControls(false);
         s.setMediaPlaybackRequiresUserGesture(true);
@@ -113,6 +120,54 @@ public class MainActivity extends Activity {
         // 默认在 127.0.0.1:7801 启动内置服务：生成功能依赖它的 /proxy
         startMcpInternal(7801, false);
         web.setWebViewClient(new LocalClient());
+
+        // <input type="file"> 必须由 WebChromeClient 拉起系统选择器，
+        // 否则 WebView 直接丢弃点击，表现为「点上传没反应」。
+        web.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback,
+                                             FileChooserParams params) {
+                if (fileCallback != null) {
+                    fileCallback.onReceiveValue(null);
+                }
+                fileCallback = callback;
+                try {
+                    Intent i = new Intent(Intent.ACTION_GET_CONTENT);
+                    i.addCategory(Intent.CATEGORY_OPENABLE);
+                    String[] types = params == null ? null : params.getAcceptTypes();
+                    boolean any = false;
+                    if (types != null) {
+                        java.util.ArrayList<String> mimes = new java.util.ArrayList<>();
+                        for (String t : types) {
+                            if (t == null) continue;
+                            String v = t.trim();
+                            if (v.isEmpty()) continue;
+                            // 形如 "image/*" 或 ".webp"，统一成 MIME
+                            if (v.startsWith(".")) {
+                                String ext = v.substring(1).toLowerCase();
+                                if (ext.equals("jpg")) ext = "jpeg";
+                                mimes.add("image/" + ext);
+                            } else {
+                                mimes.add(v);
+                            }
+                            any = true;
+                        }
+                        if (any) i.putExtra(Intent.EXTRA_MIME_TYPES,
+                                mimes.toArray(new String[0]));
+                    }
+                    i.setType(any ? "*/*" : "image/*");
+                    if (params != null && params.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE) {
+                        i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+                    }
+                    startActivityForResult(Intent.createChooser(i, "选择文件"), REQ_PICK_FILE);
+                    return true;
+                } catch (Exception e) {
+                    fileCallback = null;
+                    Toast.makeText(MainActivity.this, "无法打开文件选择器", Toast.LENGTH_SHORT).show();
+                    return false;
+                }
+            }
+        });
         web.setOverScrollMode(View.OVER_SCROLL_NEVER);
 
         // <a download> / blob 导出：用系统下载器落盘
@@ -418,6 +473,31 @@ public class MainActivity extends Activity {
     protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
         web.saveState(outState);
+    }
+
+    /** 系统文件选择器回传 */
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == REQ_PICK_FILE) {
+            if (fileCallback != null) {
+                Uri[] result = null;
+                if (resultCode == RESULT_OK && data != null) {
+                    if (data.getClipData() != null) {
+                        int n = data.getClipData().getItemCount();
+                        result = new Uri[n];
+                        for (int i = 0; i < n; i++) {
+                            result[i] = data.getClipData().getItemAt(i).getUri();
+                        }
+                    } else if (data.getData() != null) {
+                        result = new Uri[]{data.getData()};
+                    }
+                }
+                fileCallback.onReceiveValue(result);
+                fileCallback = null;
+            }
+            return;
+        }
+        super.onActivityResult(requestCode, resultCode, data);
     }
 
     @Override
