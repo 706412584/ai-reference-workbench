@@ -159,35 +159,76 @@ public class MainActivity extends Activity {
         web.loadDataWithBaseURL("https://" + HOST + "/", html, "text/html", "utf-8", null);
     }
 
-    /** 资源包安装页（纯内联，不依赖资源包） */
+    /** 资源包安装页（纯内联，不依赖资源包）。深浅主题自适应，展示百分比 / 速度 / 下载源。 */
     private String packInstallerHtml() {
         return "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\">"
                 + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
                 + "<style>"
-                + "html,body{margin:0;height:100%;background:#f7f7f5;color:#17181a;"
+                + ":root{--bg:#f7f7f5;--fg:#17181a;--muted:#5f6368;--faint:#8b8f94;"
+                + "--line:#e2e2de;--sunken:#efefec;--chip:#ffffff}"
+                + "@media (prefers-color-scheme: dark){"
+                + ":root{--bg:#121315;--fg:#eceef0;--muted:#9ba1a7;--faint:#6f757b;"
+                + "--line:#2a2d31;--sunken:#0e0f11;--chip:#1a1c1f}}"
+                + "html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);"
                 + "font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif}"
-                + ".w{max-width:420px;margin:0 auto;padding:56px 24px;text-align:center}"
-                + "h1{font-size:19px;font-weight:650;margin:0 0 8px}"
-                + "p{font-size:13px;line-height:1.7;color:#5f6368;margin:0 0 20px}"
-                + ".bar{height:6px;border-radius:3px;background:#e9e9e5;overflow:hidden;margin:18px 0 10px}"
-                + ".fill{height:100%;width:0;background:#17181a;transition:width .25s ease}"
-                + ".stage{font-size:12px;color:#8b8f94;min-height:18px}"
-                + "button{margin-top:22px;height:40px;padding:0 22px;border:0;border-radius:9px;"
-                + "background:#17181a;color:#fff;font-size:13px;font-weight:600}"
-                + "button:disabled{opacity:.45}"
+                + ".w{max-width:420px;margin:0 auto;padding:0 28px;height:100%;"
+                + "display:flex;flex-direction:column;justify-content:center}"
+                + "h1{font-size:20px;font-weight:650;margin:0 0 8px;letter-spacing:-.01em}"
+                + ".sub{font-size:13px;line-height:1.7;color:var(--muted);margin:0 0 26px}"
+                + ".pct{font-size:44px;font-weight:700;line-height:1;"
+                + "font-variant-numeric:tabular-nums;letter-spacing:-.02em;margin-bottom:14px}"
+                + ".pct small{font-size:18px;font-weight:600;color:var(--faint);margin-left:2px}"
+                + ".bar{height:8px;border-radius:4px;background:var(--sunken);overflow:hidden}"
+                + ".fill{height:100%;width:0;background:var(--fg);transition:width .3s ease}"
+                + ".stats{display:flex;align-items:center;margin-top:12px;"
+                + "font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}"
+                + ".stats .speed{min-width:86px}"
+                + ".stats .bytes{flex:1}"
+                + ".src{display:inline-flex;align-items:center;margin-top:20px;"
+                + "height:24px;padding:0 10px;border-radius:999px;"
+                + "background:var(--chip);border:1px solid var(--line);"
+                + "font-size:11px;color:var(--muted);width:max-content}"
+                + ".src i{width:6px;height:6px;border-radius:50%;background:#1f7a4d;margin-right:6px}"
+                + ".stage{font-size:12px;color:var(--faint);min-height:18px;margin-top:8px}"
+                + "button{margin-top:26px;height:42px;padding:0 26px;border:0;border-radius:10px;"
+                + "background:var(--fg);color:var(--bg);font-size:13px;font-weight:600;"
+                + "width:max-content}"
+                + "button:disabled{opacity:.4}"
+                + ".err{color:#a8641a}"
                 + "</style></head><body><div class=\"w\">"
-                + "<h1>首次启动需要安装资源包</h1>"
-                + "<p>图片素材较大，单独下载。<br>约 73 MB，请保持网络连接。</p>"
+                + "<h1>安装资源包</h1>"
+                + "<p class=\"sub\">图片素材较大，单独下载。<br>约 73 MB，请保持网络连接。</p>"
+                + "<div class=\"pct\"><span id=\"p\">0</span><small>%</small></div>"
                 + "<div class=\"bar\"><div class=\"fill\" id=\"f\"></div></div>"
+                + "<div class=\"stats\">"
+                + "<span class=\"speed\" id=\"v\">— MB/s</span>"
+                + "<span class=\"bytes\" id=\"b\">0 / 73 MB</span>"
+                + "</div>"
+                + "<div class=\"src\" id=\"src\" hidden><i></i><span id=\"srcT\">Gitee</span></div>"
                 + "<div class=\"stage\" id=\"s\">准备中…</div>"
                 + "<button id=\"go\" disabled>开始安装</button>"
                 + "</div><script>"
-                + "var go=document.getElementById('go'),f=document.getElementById('f'),s=document.getElementById('s');"
-                + "window.__packProgress=function(pct,stage){f.style.width=pct+'%';s.textContent=stage;};"
-                + "window.__packDone=function(ok,msg){s.textContent=msg;"
+                + "var go=document.getElementById('go'),f=document.getElementById('f'),"
+                + "s=document.getElementById('s'),p=document.getElementById('p'),"
+                + "v=document.getElementById('v'),b=document.getElementById('b'),"
+                + "src=document.getElementById('src'),srcT=document.getElementById('srcT');"
+                + "function fmt(n){return n>=1048576?(n/1048576).toFixed(1)+' MB/s':"
+                + "n>=1024?(n/1024).toFixed(0)+' KB/s':n+' B/s'}"
+                + "function fmtT(n){return (n/1048576).toFixed(1)+' MB'}"
+                + "window.__packProgress=function(pct,stage,bytes,total,speed,source){"
+                + "p.textContent=pct;f.style.width=pct+'%';"
+                + "s.textContent=stage;"
+                + "s.className='stage';"
+                + "v.textContent=speed>0?fmt(speed):'—';"
+                + "b.textContent=fmtT(bytes)+' / '+fmtT(total);"
+                + "if(source){src.hidden=false;srcT.textContent='下载源 · '+source;}"
+                + "};"
+                + "window.__packDone=function(ok,msg){"
+                + "s.textContent=msg;s.className='stage'+(ok?'':' err');"
+                + "if(!ok){v.textContent='—';}"
                 + "if(ok){location.href='https://" + HOST + "/index.html';}"
                 + "else{go.disabled=false;go.textContent='重试';}};"
-                + "go.onclick=function(){go.disabled=true;go.textContent='安装中…';"
+                + "go.onclick=function(){go.disabled=true;go.textContent='正在安装…';"
                 + "if(window.__wbPacks){window.__wbPacks.install();}};"
                 + "setTimeout(function(){go.disabled=false;},600);"
                 + "</script></body></html>";
@@ -299,17 +340,31 @@ public class MainActivity extends Activity {
         public void install() {
             packs.ensure(new AssetPackManager.Progress() {
                 @Override
-                public void onProgress(String stage, int percent, long bytes, long total) {
+                public void onProgress(String stage, int percent, long bytes, long total,
+                                       long speed, String source) {
+                    // 高频回调做节流：UI 每 ~150ms 刷一次足够
+                    long now = android.os.SystemClock.elapsedRealtime();
+                    if (now - lastUiRefresh < 150 && percent < 100) {
+                        return;
+                    }
+                    lastUiRefresh = now;
                     final String js = "window.__packProgress && window.__packProgress("
-                            + percent + ",'" + stage.replace("'", "") + "')";
+                            + percent + ",'" + jsEscape(stage) + "',"
+                            + bytes + "," + total + "," + speed + ",'" + jsEscape(source) + "')";
                     web.post(() -> web.evaluateJavascript(js, null));
                 }
+
+                private long lastUiRefresh;
 
                 @Override
                 public void onDone(final boolean ok, final String message) {
                     final String js = "window.__packDone && window.__packDone("
-                            + ok + ",'" + message.replace("'", "") + "')";
+                            + ok + ",'" + jsEscape(message) + "')";
                     web.post(() -> web.evaluateJavascript(js, null));
+                }
+
+                private String jsEscape(String s) {
+                    return s == null ? "" : s.replace("\\", "\\\\").replace("'", "\\'");
                 }
             });
         }

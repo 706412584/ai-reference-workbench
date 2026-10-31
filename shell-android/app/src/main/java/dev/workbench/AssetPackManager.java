@@ -2,6 +2,7 @@ package dev.workbench;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.os.SystemClock;
 import android.util.Log;
 
 import org.json.JSONArray;
@@ -33,9 +34,27 @@ public class AssetPackManager {
     private static final String KEY_VERSION = "installed_version";
 
     public interface Progress {
-        void onProgress(String stage, int percent, long bytes, long total);
+        /**
+         * @param stage   当前阶段描述（下载 / 解压 + 文件名）
+         * @param percent 总进度 0-100
+         * @param bytes   已完成字节数
+         * @param total   总字节数
+         * @param speed   当前下载速度（字节/秒），非下载阶段为 0
+         * @param source  下载源主机名，非下载阶段为空串
+         */
+        void onProgress(String stage, int percent, long bytes, long total,
+                        long speed, String source);
 
         void onDone(boolean ok, String message);
+    }
+
+    /** 从 URL 提取下载源主机，用于界面展示 */
+    private static String hostOf(String url) {
+        try {
+            return new URL(url).getHost();
+        } catch (Exception e) {
+            return "";
+        }
     }
 
     private final Context ctx;
@@ -134,9 +153,11 @@ public class AssetPackManager {
                     boolean need = !zip.exists() || zip.length() != size;
                     if (need) {
                         final long base = doneBytes;
-                        boolean ok = download(url, zip, size, (got, all) ->
-                                cb.onProgress("下载 " + file, (int) ((base + got) * 100 / Math.max(1, totalBytes)),
-                                        base + got, totalBytes));
+                        final String src = hostOf(url);
+                        boolean ok = download(url, zip, size, (got, all, speed) ->
+                                cb.onProgress("下载 " + file,
+                                        (int) ((base + got) * 100 / Math.max(1, totalBytes)),
+                                        base + got, totalBytes, speed, src));
                         if (!ok) {
                             cb.onDone(false, "下载失败：" + file);
                             return;
@@ -150,7 +171,7 @@ public class AssetPackManager {
                     }
 
                     cb.onProgress("解压 " + file, (int) (doneBytes * 100 / Math.max(1, totalBytes)),
-                            doneBytes, totalBytes);
+                            doneBytes, totalBytes, 0, "");
                     unzip(zip, stage);
                     doneBytes += size;
                 }
@@ -192,7 +213,7 @@ public class AssetPackManager {
     }
 
     private interface ByteSink {
-        void onBytes(long got, long all);
+        void onBytes(long got, long all, long speed);
     }
 
     private boolean download(String url, File dst, long expect, ByteSink sink) {
@@ -215,6 +236,10 @@ public class AssetPackManager {
             if (code != 200) return false;
 
             long total = c.getContentLength() > 0 ? c.getContentLength() : expect;
+            // 速度用滑动窗口：最近 ~1.5s 的均值，避免瞬时抖动
+            long winStart = SystemClock.elapsedRealtime();
+            long winBytes = 0;
+            long smoothSpeed = 0;
             try (InputStream in = c.getInputStream();
                  FileOutputStream out = new FileOutputStream(tmp)) {
                 byte[] buf = new byte[64 * 1024];
@@ -225,10 +250,22 @@ public class AssetPackManager {
                     if (cancelled) return false;
                     out.write(buf, 0, n);
                     got += n;
+                    winBytes += n;
                     int pct = (int) (got * 100 / Math.max(1, total));
-                    if (pct != lastPct) {
+                    long now = SystemClock.elapsedRealtime();
+                    long dt = now - winStart;
+                    // 每 400ms 或每满 1% 才上报，避免 UI 过载
+                    if (pct != lastPct || dt >= 400) {
+                        if (dt >= 300) {
+                            long inst = winBytes * 1000 / Math.max(1, dt);
+                            smoothSpeed = smoothSpeed == 0
+                                    ? inst
+                                    : (smoothSpeed * 2 + inst) / 3;
+                            winStart = now;
+                            winBytes = 0;
+                        }
                         lastPct = pct;
-                        sink.onBytes(got, total);
+                        sink.onBytes(got, total, smoothSpeed);
                     }
                 }
                 out.flush();
