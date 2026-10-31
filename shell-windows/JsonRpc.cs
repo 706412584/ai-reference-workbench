@@ -133,13 +133,18 @@ public static class JsonRpc
         new JsonObject
         {
             ["name"] = "search_references",
-            ["description"] = "在服装与深度姿势参考库中检索，返回引用 ID 与图片 URL。",
+            ["description"] = "在服装、深度姿势、线稿姿势参考库中检索，返回引用 ID 与图片 URL。"
+                + "library=all 只含服装与深度姿势；线稿需显式传 pose-line。",
             ["inputSchema"] = new JsonObject
             {
                 ["type"] = "object",
                 ["properties"] = new JsonObject
                 {
-                    ["library"] = new JsonObject { ["type"] = "string" },
+                    ["library"] = new JsonObject
+                    {
+                        ["type"] = "string",
+                        ["enum"] = new JsonArray("costume", "pose", "pose-line", "all"),
+                    },
                     ["query"] = new JsonObject { ["type"] = "string" },
                     ["category"] = new JsonObject { ["type"] = "string" },
                     ["tags"] = new JsonObject { ["type"] = "array" },
@@ -294,39 +299,48 @@ public static class JsonRpc
 
         if (lib is "all" or "pose" && results.Count < limit)
         {
-            var poses = index["pose"]?["poses"] as JsonArray;
-            if (poses != null)
-            {
-                foreach (var node in poses)
-                {
-                    if (results.Count >= limit) break;
-                    if (node is not JsonObject p) continue;
-                    if (series.Length > 0 && (p["series"]?.GetValue<string>() ?? "") != series) continue;
-                    if (cat.Length > 0 && (p["cat"]?.GetValue<string>() ?? "") != cat) continue;
+            SearchPoses(index["pose"], false, query, cat, series, angle, results, limit, index, baseUrl);
+        }
 
-                    if (query.Length > 0)
-                    {
-                        var hay = ((p["pid"]?.GetValue<string>() ?? "") + " " +
-                                   (p["name"]?.GetValue<string>() ?? "") + " " +
-                                   (p["nameZh"]?.GetValue<string>() ?? "")).ToLowerInvariant();
-                        if (!hay.Contains(query)) continue;
-                    }
-
-                    if (p["views"] is JsonArray views)
-                    {
-                        foreach (var vn in views)
-                        {
-                            if (results.Count >= limit) break;
-                            if (vn is not JsonObject v) continue;
-                            if (angle.Length > 0 && (v["ang"]?.GetValue<string>() ?? "") != angle) continue;
-                            results.Add(PoseRecord(p, v, index, baseUrl));
-                        }
-                    }
-                }
-            }
+        // 线稿库与深度库同构，但不并入 all：两者是同一姿势的不同画法，
+        // 混在一起调用方无法区分，所以只能显式指定 library=pose-line。
+        if (lib is "pose-line" && results.Count < limit && index["poseLine"] != null)
+        {
+            SearchPoses(index["poseLine"], true, query, cat, series, angle, results, limit, index, baseUrl);
         }
 
         return new JsonObject { ["count"] = results.Count, ["results"] = results };
+    }
+
+    private static void SearchPoses(JsonNode? src, bool line, string query, string cat,
+                                    string series, string angle, JsonArray results, int limit,
+                                    JsonNode index, string baseUrl)
+    {
+        if (src?["poses"] is not JsonArray poses) return;
+        foreach (var node in poses)
+        {
+            if (results.Count >= limit) break;
+            if (node is not JsonObject p) continue;
+            if (series.Length > 0 && (p["series"]?.GetValue<string>() ?? "") != series) continue;
+            if (cat.Length > 0 && (p["cat"]?.GetValue<string>() ?? "") != cat) continue;
+
+            if (query.Length > 0)
+            {
+                var hay = ((p["pid"]?.GetValue<string>() ?? "") + " " +
+                           (p["name"]?.GetValue<string>() ?? "") + " " +
+                           (p["nameZh"]?.GetValue<string>() ?? "")).ToLowerInvariant();
+                if (!hay.Contains(query)) continue;
+            }
+
+            if (p["views"] is not JsonArray views) continue;
+            foreach (var vn in views)
+            {
+                if (results.Count >= limit) break;
+                if (vn is not JsonObject v) continue;
+                if (angle.Length > 0 && (v["ang"]?.GetValue<string>() ?? "") != angle) continue;
+                results.Add(PoseRecord(p, v, index, baseUrl, line));
+            }
+        }
     }
 
     private static JsonObject CostumeRecord(JsonObject it, JsonNode index, string baseUrl)
@@ -356,7 +370,8 @@ public static class JsonRpc
         };
     }
 
-    private static JsonObject PoseRecord(JsonObject p, JsonObject v, JsonNode index, string baseUrl)
+    private static JsonObject PoseRecord(JsonObject p, JsonObject v, JsonNode index,
+                                        string baseUrl, bool line = false)
     {
         var cat = p["cat"]?.GetValue<string>() ?? "";
         var catZh = cat;
@@ -386,8 +401,11 @@ public static class JsonRpc
         }
         return new JsonObject
         {
-            ["ref"] = "pose:" + (p["id"]?.GetValue<string>() ?? "") + ":" + (v["ang"]?.GetValue<string>() ?? ""),
+            // ref 必须回显实际库：线稿记录若写成 pose:，调用方回查会拿到深度图
+            ["ref"] = (line ? "pose-line:" : "pose:") + (p["id"]?.GetValue<string>() ?? "") + ":"
+                      + (v["ang"]?.GetValue<string>() ?? ""),
             ["kind"] = "pose",
+            ["variant"] = line ? "line" : "depth",
             ["id"] = p["id"]?.GetValue<string>() ?? "",
             ["pid"] = p["pid"]?.GetValue<string>() ?? "",
             ["angle"] = v["ang"]?.GetValue<string>() ?? "",
@@ -440,7 +458,7 @@ public static class JsonRpc
                             break;
                         }
                     }
-                    return PoseRecord(p, v, index, baseUrl);
+                    return PoseRecord(p, v, index, baseUrl, isLine);
                 }
             }
         }
@@ -571,6 +589,8 @@ public static class JsonRpc
             {
                 ["categories"] = costume?["cats"]?.DeepClone(),
                 ["tagGroups"] = costume?["groups"]?.DeepClone(),
+                // 标签只有英文 slug，外部 AI 靠它翻译给用户
+                ["tagZh"] = costume?["tagZh"]?.DeepClone() ?? new JsonObject(),
                 ["total"] = (costume?["items"] as JsonArray)?.Count ?? 0,
             },
             ["pose"] = new JsonObject
@@ -580,6 +600,29 @@ public static class JsonRpc
                 ["angles"] = pose?["angOrder"]?.DeepClone(),
                 ["total"] = (pose?["poses"] as JsonArray)?.Count ?? 0,
             },
+            ["poseLine"] = PoseSummary(index["poseLine"]),
+        };
+    }
+
+    /// <summary>线稿库摘要；缺库时返回空结构，保持三端字段一致。</summary>
+    private static JsonObject PoseSummary(JsonNode? pl)
+    {
+        if (pl == null)
+        {
+            return new JsonObject
+            {
+                ["series"] = new JsonArray(),
+                ["categories"] = new JsonArray(),
+                ["angles"] = new JsonArray(),
+                ["total"] = 0,
+            };
+        }
+        return new JsonObject
+        {
+            ["series"] = pl["series"]?.DeepClone(),
+            ["categories"] = pl["cats"]?.DeepClone(),
+            ["angles"] = pl["angOrder"]?.DeepClone(),
+            ["total"] = (pl["poses"] as JsonArray)?.Count ?? 0,
         };
     }
 

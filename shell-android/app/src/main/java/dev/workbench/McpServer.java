@@ -491,13 +491,16 @@ public class McpServer {
         try {
             arr.put(new JSONObject()
                     .put("name", "search_references")
-                    .put("description", "在服装与深度姿势参考库中检索，返回引用 ID 与图片 URL。")
+                    .put("description",
+                            "在服装、深度姿势、线稿姿势参考库中检索，返回引用 ID 与图片 URL。"
+                                    + "library=all 只含服装与深度姿势；线稿需显式传 pose-line。")
                     .put("inputSchema", new JSONObject()
                             .put("type", "object")
                             .put("properties", new JSONObject()
                                     .put("library", new JSONObject()
                                             .put("type", "string")
-                                            .put("enum", new JSONArray().put("costume").put("pose").put("all")))
+                                            .put("enum", new JSONArray()
+                                                    .put("costume").put("pose").put("pose-line").put("all")))
                                     .put("query", new JSONObject().put("type", "string"))
                                     .put("category", new JSONObject().put("type", "string"))
                                     .put("tags", new JSONObject()
@@ -646,26 +649,37 @@ public class McpServer {
         }
 
         if (("all".equals(lib) || "pose".equals(lib)) && results.length() < limit) {
-            JSONArray poses = index.getJSONObject("pose").getJSONArray("poses");
-            for (int i = 0; i < poses.length() && results.length() < limit; i++) {
-                JSONObject p = poses.getJSONObject(i);
-                if (!series.isEmpty() && !series.equals(p.optString("series"))) continue;
-                if (!cat.isEmpty() && !cat.equals(p.optString("cat"))) continue;
-                if (!q.isEmpty()) {
-                    String hay = (p.optString("pid") + " " + p.optString("name") + " "
-                            + p.optString("nameZh")).toLowerCase(Locale.US);
-                    if (!hay.contains(q)) continue;
-                }
-                JSONArray views = p.getJSONArray("views");
-                for (int j = 0; j < views.length() && results.length() < limit; j++) {
-                    JSONObject v = views.getJSONObject(j);
-                    if (!angle.isEmpty() && !angle.equals(v.optString("ang"))) continue;
-                    results.put(poseRecord(p, v));
-                }
-            }
+            searchPoses(index.getJSONObject("pose"), false, q, cat, series, angle, results, limit);
+        }
+
+        // 线稿库与深度库同构，但不并入 all：两者的图片是同一姿势的不同画法，
+        // 混在一起会让调用方无法区分，所以只能显式指定 library=pose-line。
+        if ("pose-line".equals(lib) && results.length() < limit && index.has("poseLine")) {
+            searchPoses(index.getJSONObject("poseLine"), true, q, cat, series, angle, results, limit);
         }
 
         return new JSONObject().put("count", results.length()).put("results", results);
+    }
+
+    private void searchPoses(JSONObject src, boolean line, String q, String cat, String series,
+                             String angle, JSONArray results, int limit) throws Exception {
+        JSONArray poses = src.getJSONArray("poses");
+        for (int i = 0; i < poses.length() && results.length() < limit; i++) {
+            JSONObject p = poses.getJSONObject(i);
+            if (!series.isEmpty() && !series.equals(p.optString("series"))) continue;
+            if (!cat.isEmpty() && !cat.equals(p.optString("cat"))) continue;
+            if (!q.isEmpty()) {
+                String hay = (p.optString("pid") + " " + p.optString("name") + " "
+                        + p.optString("nameZh")).toLowerCase(Locale.US);
+                if (!hay.contains(q)) continue;
+            }
+            JSONArray views = p.getJSONArray("views");
+            for (int j = 0; j < views.length() && results.length() < limit; j++) {
+                JSONObject v = views.getJSONObject(j);
+                if (!angle.isEmpty() && !angle.equals(v.optString("ang"))) continue;
+                results.put(poseRecord(p, v, line));
+            }
+        }
     }
 
     private JSONObject costumeRecord(JSONObject it) throws Exception {
@@ -688,7 +702,7 @@ public class McpServer {
                 .put("image", baseUrl() + "/" + it.optString("mid"));
     }
 
-    private JSONObject poseRecord(JSONObject p, JSONObject v) throws Exception {
+    private JSONObject poseRecord(JSONObject p, JSONObject v, boolean line) throws Exception {
         String cat = p.optString("cat");
         String catZh = cat;
         JSONArray cats = index.getJSONObject("pose").getJSONArray("cats");
@@ -708,8 +722,11 @@ public class McpServer {
             }
         }
         return new JSONObject()
-                .put("ref", "pose:" + p.optString("id") + ":" + v.optString("ang"))
+                // ref 必须回显实际库：线稿记录若写成 pose:，调用方回查会拿到深度图
+                .put("ref", (line ? "pose-line:" : "pose:") + p.optString("id") + ":"
+                        + v.optString("ang"))
                 .put("kind", "pose")
+                .put("variant", line ? "line" : "depth")
                 .put("id", p.optString("id"))
                 .put("pid", p.optString("pid"))
                 .put("angle", v.optString("ang"))
@@ -753,7 +770,7 @@ public class McpServer {
                         break;
                     }
                 }
-                return poseRecord(p, v);
+                return poseRecord(p, v, isLine);
             }
         }
         return null;
@@ -877,12 +894,32 @@ public class McpServer {
                 .put("costume", new JSONObject()
                         .put("categories", costume.getJSONArray("cats"))
                         .put("tagGroups", costume.getJSONArray("groups"))
+                        // 标签只有英文 slug，外部 AI 靠它翻译给用户
+                        .put("tagZh", costume.optJSONObject("tagZh") == null
+                                ? new JSONObject() : costume.getJSONObject("tagZh"))
                         .put("total", costume.getJSONArray("items").length()))
                 .put("pose", new JSONObject()
                         .put("series", pose.getJSONArray("series"))
                         .put("categories", pose.getJSONArray("cats"))
                         .put("angles", pose.getJSONArray("angOrder"))
-                        .put("total", pose.getJSONArray("poses").length()));
+                        .put("total", pose.getJSONArray("poses").length()))
+                .put("poseLine", poseSummary(index.optJSONObject("poseLine")));
+    }
+
+    /** 线稿库摘要；缺库时返回空结构，保持三端字段一致 */
+    private static JSONObject poseSummary(JSONObject pl) throws Exception {
+        if (pl == null) {
+            return new JSONObject()
+                    .put("series", new JSONArray())
+                    .put("categories", new JSONArray())
+                    .put("angles", new JSONArray())
+                    .put("total", 0);
+        }
+        return new JSONObject()
+                .put("series", pl.getJSONArray("series"))
+                .put("categories", pl.getJSONArray("cats"))
+                .put("angles", pl.getJSONArray("angOrder"))
+                .put("total", pl.getJSONArray("poses").length());
     }
 
     private String buildPrompt(JSONObject args) throws Exception {

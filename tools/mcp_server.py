@@ -52,11 +52,18 @@ def load_data():
 TOOLS = [
     {
         "name": "search_references",
-        "description": "在服装与深度姿势参考库中检索。返回引用 ID、标题与可直接访问的图片 URL。",
+        "description": (
+            "在服装、深度姿势、线稿姿势参考库中检索。返回引用 ID、标题与可直接访问的图片 URL。"
+            "library=all 只含服装与深度姿势；线稿需显式传 pose-line。"
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
-                "library": {"type": "string", "enum": ["costume", "pose", "all"], "default": "all"},
+                "library": {
+                    "type": "string",
+                    "enum": ["costume", "pose", "pose-line", "all"],
+                    "default": "all",
+                },
                 "query": {"type": "string", "description": "编号 / 名称 / 标签关键词"},
                 "category": {"type": "string", "description": "分类 slug，例如 c01"},
                 "tags": {"type": "array", "items": {"type": "string"}, "description": "服装标签，AND 逻辑"},
@@ -146,13 +153,11 @@ def resolve(ref, index):
         pid = rest[:cut] if cut > 0 else rest
         ang = rest[cut + 1:] if cut > 0 else ""
         # 线稿库缺 poseLine 时回退深度库（同 id 同姿势，仅图源不同）
-        src = index.get("poseLine") or index["pose"] if is_line else index["pose"]
+        src = (index.get("poseLine") or index["pose"]) if is_line else index["pose"]
         for p in src["poses"]:
             if p["id"] == pid:
                 v = next((x for x in p["views"] if x["ang"] == ang), p["views"][0])
-                rec = pose_record(p, v, index)
-                rec["variant"] = "line" if is_line else "depth"
-                return rec
+                return pose_record(p, v, index, line=is_line)
         return None
     return None
 
@@ -170,12 +175,14 @@ def costume_record(it, index, base=""):
     }
 
 
-def pose_record(p, v, index, base=""):
+def pose_record(p, v, index, base="", line=False):
     cat = next((c for c in index["pose"]["cats"] if c["slug"] == p["cat"]), None)
     ser = next((s for s in index["pose"]["series"] if s["slug"] == p["series"]), None)
     return {
-        "ref": "pose:%s:%s" % (p["id"], v["ang"]),
+        # ref 必须回显实际库：线稿记录若写成 pose:，调用方回查会拿到深度图
+        "ref": "%s:%s:%s" % ("pose-line" if line else "pose", p["id"], v["ang"]),
         "kind": "pose",
+        "variant": "line" if line else "depth",
         "id": p["id"],
         "pid": p["pid"],
         "angle": v["ang"],
@@ -214,26 +221,35 @@ def tool_search(args, index, base):
                 break
 
     if lib in ("pose", "all") and len(out) < limit:
-        for p in index["pose"]["poses"]:
-            if series and p["series"] != series:
-                continue
-            if cat and p["cat"] != cat:
-                continue
-            if q:
-                hay = " ".join([p["pid"], p["name"], p["nameZh"]]).lower()
-                if q not in hay:
-                    continue
-            views = p["views"]
-            if angle:
-                views = [v for v in views if v["ang"] == angle]
-            for v in views:
-                out.append(pose_record(p, v, index, base))
-                if len(out) >= limit:
-                    break
-            if len(out) >= limit:
-                break
+        _search_poses(index["pose"], False, q, cat, series, angle, out, limit, index, base)
+
+    # 线稿库与深度库同构，但不并入 all：两者是同一姿势的不同画法，
+    # 混在一起调用方无法区分，所以只能显式指定 library=pose-line。
+    if lib == "pose-line" and len(out) < limit and index.get("poseLine"):
+        _search_poses(index["poseLine"], True, q, cat, series, angle, out, limit, index, base)
 
     return {"count": len(out), "results": out}
+
+
+def _search_poses(src, line, q, cat, series, angle, out, limit, index, base):
+    for p in src["poses"]:
+        if len(out) >= limit:
+            break
+        if series and p["series"] != series:
+            continue
+        if cat and p["cat"] != cat:
+            continue
+        if q:
+            hay = " ".join([p["pid"], p["name"], p["nameZh"]]).lower()
+            if q not in hay:
+                continue
+        views = p["views"]
+        if angle:
+            views = [v for v in views if v["ang"] == angle]
+        for v in views:
+            out.append(pose_record(p, v, index, base, line))
+            if len(out) >= limit:
+                break
 
 
 def tool_categories(index):
@@ -250,6 +266,20 @@ def tool_categories(index):
             "angles": index["pose"]["angOrder"],
             "total": len(index["pose"]["poses"]),
         },
+        "poseLine": _pose_line_summary(index),
+    }
+
+
+def _pose_line_summary(index):
+    """线稿库摘要；缺库时返回空结构，保持三端字段一致。"""
+    pl = index.get("poseLine")
+    if not pl:
+        return {"series": [], "categories": [], "angles": [], "total": 0}
+    return {
+        "series": pl["series"],
+        "categories": pl["cats"],
+        "angles": pl["angOrder"],
+        "total": len(pl["poses"]),
     }
 
 
