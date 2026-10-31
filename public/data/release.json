@@ -1,26 +1,33 @@
 {
- "version": "1.0.0",
+ "version": "1.1.0",
  "packs": [
   {
    "name": "costume",
    "file": "assets-costume.zip",
    "bytes": 53250634,
    "sha256": "6591200f0c38f8a931aac91a59f189de74703c7fec9a576fa78502a757c55a96",
-   "url": "https://gitee.com/wu-yongchengsvip_admin/ai-workbench-assets/releases/download/v1.0.0/assets-costume.zip"
+   "url": "https://gitee.com/wu-yongchengsvip_admin/ai-workbench-assets/releases/download/v1.1.0/assets-costume.zip"
   },
   {
    "name": "pose",
    "file": "assets-pose.zip",
    "bytes": 21909046,
    "sha256": "16eb17fe59711a05f33f9b6ba05841a19773b162e2a5dd74e0451b2a2afe28ec",
-   "url": "https://gitee.com/wu-yongchengsvip_admin/ai-workbench-assets/releases/download/v1.0.0/assets-pose.zip"
+   "url": "https://gitee.com/wu-yongchengsvip_admin/ai-workbench-assets/releases/download/v1.1.0/assets-pose.zip"
+  },
+  {
+   "name": "pose-line",
+   "file": "assets-pose-line.zip",
+   "bytes": 62996930,
+   "sha256": "d1402f744806337e23961dc7ccf9bf0ad8d26dffdb0b43a86cc99f6b7e82de94",
+   "url": "https://gitee.com/wu-yongchengsvip_admin/ai-workbench-assets/releases/download/v1.1.0/assets-pose-line.zip"
   },
   {
    "name": "data",
    "file": "data.zip",
-   "bytes": 696475,
-   "sha256": "94d8a39dbba24078af93f72edf79ab478050b7c1af4c09682057907eb9216d74",
-   "url": "https://gitee.com/wu-yongchengsvip_admin/ai-workbench-assets/releases/download/v1.0.0/data.zip"
+   "bytes": 974239,
+   "sha256": "e1dd4b9e45b02ac824c6b582e0c23d29c1df8ce043f13562e1e4d439801a3769",
+   "url": "https://gitee.com/wu-yongchengsvip_admin/ai-workbench-assets/releases/download/v1.1.0/data.zip"
   }
  ]
 }

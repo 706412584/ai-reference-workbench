@@ -733,12 +733,15 @@ public class McpServer {
             }
             return null;
         }
-        if (raw.startsWith("pose:")) {
-            String rest = raw.substring(5);
+        boolean isLine = raw.startsWith("pose-line:");
+        if (isLine || raw.startsWith("pose:")) {
+            String rest = isLine ? raw.substring(10) : raw.substring(5);
             int cut = rest.lastIndexOf(':');
             String id = cut > 0 ? rest.substring(0, cut) : rest;
             String ang = cut > 0 ? rest.substring(cut + 1) : "";
-            JSONArray poses = index.getJSONObject("pose").getJSONArray("poses");
+            JSONObject poseSrc = isLine && index.has("poseLine")
+                    ? index.getJSONObject("poseLine") : index.getJSONObject("pose");
+            JSONArray poses = poseSrc.getJSONArray("poses");
             for (int i = 0; i < poses.length(); i++) {
                 JSONObject p = poses.getJSONObject(i);
                 if (!id.equals(p.optString("id"))) continue;

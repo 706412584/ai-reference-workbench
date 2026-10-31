@@ -4,6 +4,7 @@ import type {
   IndexData,
   Library,
   PoseItem,
+  PoseVariant,
   PromptBagItem,
 } from './types'
 import { useData } from './useData'
@@ -67,6 +68,7 @@ export default function App() {
   const skills = useSkills()
   const [providers, setProviders] = useProviders()
   const [library, setLibrary] = useLibrary()
+  const [poseVariant, setPoseVariant] = useState<PoseVariant>('depth')
   const [genSeed, setGenSeed] = useState<{ url: string; prompt: string; nonce: number } | null>(null)
   const [viewerIndex, setViewerIndex] = useState<number | null>(null)
   const bag = usePromptBag()
@@ -101,20 +103,23 @@ export default function App() {
     [data],
   )
 
+  // 当前姿势数据源：深度 / 线稿。两者同构，筛选逻辑完全复用。
+  const activePose = poseVariant === 'line' && data?.poseLine ? data.poseLine : data?.pose
+
   const poseCatName = useCallback(
     (slug: string) => {
-      const c = data?.pose.cats.find(x => x.slug === slug)
+      const c = activePose?.cats.find(x => x.slug === slug)
       return c ? c.zh : slug
     },
-    [data],
+    [activePose],
   )
 
   const poseSeriesName = useCallback(
     (slug: string) => {
-      const s = data?.pose.series.find(x => x.slug === slug)
+      const s = activePose?.series.find(x => x.slug === slug)
       return s ? s.zh : slug
     },
-    [data],
+    [activePose],
   )
 
   const tagLabel = useCallback(
@@ -127,10 +132,10 @@ export default function App() {
 
   const angLabel = useCallback(
     (a: string) => {
-      if (!data) return a
-      return data.pose.angZh[a] || a
+      if (!activePose) return a
+      return activePose.angZh[a] || a
     },
-    [data],
+    [activePose],
   )
 
   /* ── 过滤 ── */
@@ -170,9 +175,9 @@ export default function App() {
   }, [data, query, cat, tags, costumeCatName, tagLabel, hiddenCats])
 
   const poseView = useMemo(() => {
-    if (!data) return [] as PoseItem[]
+    if (!activePose) return [] as PoseItem[]
     const q = query.trim().toLowerCase()
-    return data.pose.poses.filter(p => {
+    return activePose.poses.filter(p => {
       if (series && p.series !== series) return false
       if (cat && p.cat !== cat) return false
       if (ang && !p.views.some(v => v.ang === ang)) return false
@@ -190,7 +195,7 @@ export default function App() {
       }
       return true
     })
-  }, [data, query, cat, series, ang, poseSeriesName, poseCatName])
+  }, [activePose, query, cat, series, ang, poseSeriesName, poseCatName])
 
   const view = lib === 'costume' ? costumeView : poseView
   const pageSize = lib === 'costume' ? PAGE_COSTUME : PAGE_POSE
@@ -330,16 +335,17 @@ export default function App() {
 
   const addPoseToBag = useCallback(
     (p: PoseItem, a: string) => {
+      const isLine = poseVariant === 'line'
       bag.add({
         kind: 'pose',
-        id: p.id,
+        id: isLine ? 'pose-line:' + p.id : p.id,
         ang: a,
-        label: `${p.pid} · ${angLabel(a)}`,
+        label: (isLine ? '线稿 ' : '') + `${p.pid} · ${angLabel(a)}`,
         thumb: (p.views.find(v => v.ang === a) || p.views[0]).thumb,
       })
       toast.show('已加入提示词袋')
     },
-    [bag, angLabel, toast],
+    [bag, angLabel, toast, poseVariant],
   )
 
   const copyAction = useCallback(
@@ -397,9 +403,9 @@ export default function App() {
   }
 
   const costumeCats = data.costume.cats
-  const poseSeries = data.pose.series
-  const poseCats = data.pose.cats
-  const angOrder = data.pose.angOrder
+  const poseSeries = (activePose || data.pose).series
+  const poseCats = (activePose || data.pose).cats
+  const angOrder = (activePose || data.pose).angOrder
 
   const activeFacetCount =
     lib === 'costume' ? tags.length + (cat ? 1 : 0) : (cat ? 1 : 0) + (ang ? 1 : 0)
@@ -423,7 +429,9 @@ export default function App() {
       : undefined
   const lbPose =
     lightbox && lightbox.lib === 'pose'
-      ? (data.pose.poses.find(x => x.id === lightbox.id) as PoseItem | undefined)
+      ? ((poseVariant === 'line' && data.poseLine ? data.poseLine : data.pose).poses.find(
+          x => x.id === lightbox.id,
+        ) as PoseItem | undefined)
       : undefined
 
   return (
@@ -464,9 +472,28 @@ export default function App() {
           activeFacetCount={activeFacetCount}
           countText={countText}
         >
+          {lib === 'pose' && (
+            <div className="catrow variant-row">
+              <div className="seg vseg" role="group" aria-label="姿势库版本">
+                <button
+                  aria-pressed={poseVariant === 'depth'}
+                  onClick={() => setPoseVariant('depth')}
+                >
+                  深度图
+                </button>
+                <button
+                  aria-pressed={poseVariant === 'line'}
+                  onClick={() => setPoseVariant('line')}
+                >
+                  线稿
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="catrow">
             <button className="cat" aria-pressed={cat === null} onClick={() => setCat(null)}>
-              全部<span className="n">{lib === 'costume' ? data.costume.items.length : data.pose.poses.length}</span>
+              全部<span className="n">{lib === 'costume' ? data.costume.items.length : (activePose || data.pose).poses.length}</span>
             </button>
             {lib === 'costume'
               ? costumeCats.filter(c => !hiddenCats.has(c.slug)).map(c => (
@@ -564,7 +591,7 @@ export default function App() {
                         全部
                       </button>
                       {poseCats
-                        .filter(c => data.pose.poses.some(p => p.cat === c.slug && (!series || p.series === series)))
+                        .filter(c => (activePose || data.pose).poses.some(p => p.cat === c.slug && (!series || p.series === series)))
                         .map(c => (
                           <button
                             key={c.slug}
@@ -734,21 +761,25 @@ export default function App() {
           ) : (
             <div className="rows">
               {favs.list.map(f => {
+                const isLine = f.kind === 'pose' && (f.ang || '').startsWith('line:')
+                const rawAng = isLine ? (f.ang || '').slice(5) : f.ang
+                const poseSrc =
+                  f.kind === 'costume' ? null : isLine ? data.poseLine : data.pose
                 const it =
                   f.kind === 'costume'
                     ? data.costume.items.find(x => x.id === f.id)
-                    : data.pose.poses.find(x => x.id === f.id)
+                    : poseSrc?.poses.find(x => x.id === f.id)
                 if (!it) return null
                 const thumb =
                   f.kind === 'costume'
                     ? (it as CostumeItem).thumb
-                    : ((it as PoseItem).views.find(v => v.ang === f.ang) || (it as PoseItem).views[0]).thumb
+                    : ((it as PoseItem).views.find(v => v.ang === rawAng) || (it as PoseItem).views[0]).thumb
                 const title =
                   f.kind === 'costume' ? (it as CostumeItem).id : (it as PoseItem).pid
                 const sub =
                   f.kind === 'costume'
                     ? costumeCatName((it as CostumeItem).cat)
-                    : `${(it as PoseItem).nameZh}${f.ang ? ' · ' + angLabel(f.ang) : ''}`
+                    : `${isLine ? '线稿 · ' : ''}${(it as PoseItem).nameZh}${rawAng ? ' · ' + angLabel(rawAng) : ''}`
                 return (
                   <div className="row-item" key={`${f.kind}:${f.id}:${f.ang || ''}`}>
                     <div className="thumb">

@@ -1,9 +1,10 @@
-import type { CostumeItem, IndexData, PoseItem } from './types'
+import type { CostumeItem, IndexData, PoseItem, PoseVariant } from './types'
 
 /**
  * 稳定引用格式，供外部 AI / MCP 解析：
  *   costume:SPR-0001
- *   pose:full-sexy/P001:front
+ *   pose:full-sexy/P001:front        （深度版）
+ *   pose-line:full-sexy/P001:front   （线稿版）
  *   https://app.local/assets/costume/mid/SPR-0001.webp
  */
 
@@ -13,8 +14,16 @@ export function costumeRef(it: CostumeItem): string {
   return `costume:${it.id}`
 }
 
-export function poseRef(p: PoseItem, ang: string): string {
-  return `pose:${p.id}:${ang}`
+export function poseRef(p: PoseItem, ang: string, variant: PoseVariant = 'depth'): string {
+  return `${variant === 'line' ? 'pose-line' : 'pose'}:${p.id}:${ang}`
+}
+
+/** 引用前缀 -> 姿势数据源 */
+function poseData(ref: string, data: IndexData): { poses: PoseItem[]; variant: PoseVariant } | null {
+  if (ref.indexOf('pose:') === 0) return { poses: data.pose.poses, variant: 'depth' }
+  if (ref.indexOf('pose-line:') === 0 && data.poseLine)
+    return { poses: data.poseLine.poses, variant: 'line' }
+  return null
 }
 
 export function absUrl(path: string): string {
@@ -42,9 +51,15 @@ export function resolveRef(ref: string, data: IndexData): Resolved | null {
     const path = raw.replace(/^https?:\/\/[^/]+\//i, '')
     const costume = data.costume.items.find(x => x.mid === path || x.thumb === path || x.full === path)
     if (costume) return toCostume(costume, data)
-    for (const p of data.pose.poses) {
-      for (const v of p.views) {
-        if (v.full === path || v.thumb === path) return toPose(p, v.ang, data)
+    const sources: { poses: PoseItem[]; variant: PoseVariant }[] = [
+      { poses: data.pose.poses, variant: 'depth' },
+    ]
+    if (data.poseLine) sources.push({ poses: data.poseLine.poses, variant: 'line' })
+    for (const s of sources) {
+      for (const p of s.poses) {
+        for (const v of p.views) {
+          if (v.full === path || v.thumb === path) return toPose(p, v.ang, data, s.variant)
+        }
       }
     }
     return null
@@ -56,15 +71,15 @@ export function resolveRef(ref: string, data: IndexData): Resolved | null {
     return it ? toCostume(it, data) : null
   }
 
-  if (raw.indexOf('pose:') === 0) {
-    const rest = raw.slice(5)
-    const cut = rest.lastIndexOf(':')
-    const id = cut > 0 ? rest.slice(0, cut) : rest
-    const ang = cut > 0 ? rest.slice(cut + 1) : ''
-    const p = data.pose.poses.find(x => x.id === id)
+  const ps = poseData(raw, data)
+  if (ps) {
+    const cut = raw.lastIndexOf(':')
+    const id = raw.slice(ps.variant === 'line' ? 10 : 5, cut > 0 ? cut : undefined)
+    const ang = cut > 0 ? raw.slice(cut + 1) : ''
+    const p = ps.poses.find(x => x.id === id)
     if (!p) return null
     const v = p.views.find(x => x.ang === ang) || p.views[0]
-    return toPose(p, v.ang, data)
+    return toPose(p, v.ang, data, ps.variant)
   }
 
   return null
@@ -83,7 +98,7 @@ function toCostume(it: CostumeItem, data: IndexData): Resolved {
   }
 }
 
-function toPose(p: PoseItem, ang: string, data: IndexData): Resolved {
+function toPose(p: PoseItem, ang: string, data: IndexData, variant: PoseVariant = 'depth'): Resolved {
   const v = p.views.find(x => x.ang === ang) || p.views[0]
   const cat = data.pose.cats.find(c => c.slug === p.cat)
   return {
@@ -91,7 +106,7 @@ function toPose(p: PoseItem, ang: string, data: IndexData): Resolved {
     id: p.id,
     ang: v.ang,
     title: `${p.pid} · ${v.nameZh}`,
-    sub: cat ? cat.zh : p.cat,
+    sub: (variant === 'line' ? '线稿 · ' : '') + (cat ? cat.zh : p.cat),
     thumb: v.thumb,
     image: v.full,
     tags: [p.nameZh],

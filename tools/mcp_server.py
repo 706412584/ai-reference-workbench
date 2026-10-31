@@ -139,15 +139,20 @@ def resolve(ref, index):
             if it["id"] == cid:
                 return costume_record(it, index)
         return None
-    if raw.startswith("pose:"):
-        rest = raw[5:]
+    is_line = raw.startswith("pose-line:")
+    if is_line or raw.startswith("pose:"):
+        rest = raw[10:] if is_line else raw[5:]
         cut = rest.rfind(":")
         pid = rest[:cut] if cut > 0 else rest
         ang = rest[cut + 1:] if cut > 0 else ""
-        for p in index["pose"]["poses"]:
+        # 线稿库缺 poseLine 时回退深度库（同 id 同姿势，仅图源不同）
+        src = index.get("poseLine") or index["pose"] if is_line else index["pose"]
+        for p in src["poses"]:
             if p["id"] == pid:
                 v = next((x for x in p["views"] if x["ang"] == ang), p["views"][0])
-                return pose_record(p, v, index)
+                rec = pose_record(p, v, index)
+                rec["variant"] = "line" if is_line else "depth"
+                return rec
         return None
     return None
 

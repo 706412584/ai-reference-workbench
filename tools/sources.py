@@ -7,10 +7,13 @@ GALLERY = os.path.dirname(ROOT)
 
 COSTUME_REPO = os.path.join(GALLERY, "ai-costume-gallery-cn")
 POSE_REPO = os.path.join(GALLERY, "ai-pose-depth-gallery-cn")
+# 线稿版姿势库（POSE-DB-01），与深度版同构：288 姿势 × 5 视角
+POSE_LINE_REPO = os.path.join(GALLERY, "ai-pose-gallery-cn")
 
 CACHE = os.path.join(ROOT, ".cache")
 RAW_COSTUME = os.path.join(CACHE, "raw", "costume")
 RAW_POSE = os.path.join(CACHE, "raw", "pose")
+RAW_POSE_LINE = os.path.join(CACHE, "raw", "pose-line")
 
 PUBLIC = os.path.join(ROOT, "public")
 ASSETS = os.path.join(PUBLIC, "assets")
@@ -27,3 +30,4 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 
 COSTUME_REFERER = "https://ai-costume-gallery.pages.dev/"
 POSE_REFERER = "https://ai-pose-depth-gallery.pages.dev/"
+POSE_LINE_REFERER = "https://ai-pose-gallery.pages.dev/"

@@ -417,13 +417,15 @@ public static class JsonRpc
             }
             return null;
         }
-        if (raw.StartsWith("pose:", StringComparison.Ordinal))
+        var isLine = raw.StartsWith("pose-line:", StringComparison.Ordinal);
+        if (isLine || raw.StartsWith("pose:", StringComparison.Ordinal))
         {
-            var rest = raw[5..];
+            var rest = isLine ? raw[10..] : raw[5..];
             var cut = rest.LastIndexOf(':');
             var id = cut > 0 ? rest[..cut] : rest;
             var ang = cut > 0 ? rest[(cut + 1)..] : "";
-            if (index["pose"]?["poses"] is JsonArray poses)
+            var poseSrc = isLine && index["poseLine"] != null ? index["poseLine"] : index["pose"];
+            if (poseSrc?["poses"] is JsonArray poses)
             {
                 foreach (var node in poses)
                 {

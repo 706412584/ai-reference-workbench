@@ -260,7 +260,16 @@ export default function Lightbox(props: Props) {
                   <IconSave size={14} /> 保存图片
                 </button>
                 <button
-                  onClick={() => onCopy(poseRef(props.pose, props.ang), '已复制引用')}
+                  onClick={() =>
+                    onCopy(
+                      poseRef(
+                        props.pose,
+                        props.ang,
+                        view.full.indexOf('/pose-line/') >= 0 ? 'line' : 'depth',
+                      ),
+                      '已复制引用',
+                    )
+                  }
                 >
                   <IconCopy size={14} /> 复制引用
                 </button>

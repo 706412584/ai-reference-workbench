@@ -12,8 +12,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from sources import (  # noqa: E402
-    COSTUME_REPO, POSE_REPO, DATA, COSTUME_MID_MAX, COSTUME_MID_Q,
-    POSE_FULL_MAX, POSE_FULL_Q, COSTUME_REFERER, POSE_REFERER,
+    COSTUME_REPO, POSE_REPO, POSE_LINE_REPO, DATA, COSTUME_MID_MAX, COSTUME_MID_Q,
+    POSE_FULL_MAX, POSE_FULL_Q, COSTUME_REFERER, POSE_REFERER, POSE_LINE_REFERER,
 )
 
 # 系列 / 视角 -> ASCII slug（顺序即 UI 顺序）
@@ -93,9 +93,14 @@ def build_costume():
     }
 
 
-def build_pose():
-    rows = load(os.path.join(POSE_REPO, "data", "pose-zh.json"))
-    meta = load(os.path.join(POSE_REPO, "data", "meta.json"))
+def build_pose(variant="depth"):
+    """variant: depth（POSE-DB-02）| line（POSE-DB-01 线稿）。
+    两个仓库数据同构，仅源 URL 与输出路径不同。"""
+    repo = POSE_REPO if variant == "depth" else POSE_LINE_REPO
+    asset_root = "assets/pose" if variant == "depth" else "assets/pose-line"
+
+    rows = load(os.path.join(repo, "data", "pose-zh.json"))
+    meta = load(os.path.join(repo, "data", "meta.json"))
 
     series_meta = meta["系列"]
     series = []
@@ -138,7 +143,7 @@ def build_pose():
         views = []
         for v in p["views"]:
             ang = ANG_SLUG.get(v["视角"], "v")
-            base = "assets/pose/%s/%s/%s/%s" % (p["series"], p["cat"], p["pid"], ang)
+            base = "%s/%s/%s/%s/%s" % (asset_root, p["series"], p["cat"], p["pid"], ang)
             views.append({
                 "ang": ang,
                 "name": v["视角"],
@@ -163,7 +168,7 @@ def build_pose():
     }
 
 
-def build_plan(costume, pose):
+def build_plan(costume, pose, pose_line):
     """生成逐文件计划：源 URL -> 目标路径 + 转码参数。"""
     plan = []
 
@@ -222,24 +227,58 @@ def build_plan(costume, pose):
                 "format": "webp",
             })
 
+    # ── 线稿姿势（POSE-DB-01）──
+    lrows = load(os.path.join(POSE_LINE_REPO, "manifest.json"))
+    lby = {}
+    for r in lrows:
+        key = (SERIES_SLUG.get(r["系列"]), r["编号"], ANG_SLUG.get(r["视角"]))
+        lby[key] = r
+
+    for p in pose_line["poses"]:
+        for v in p["views"]:
+            src = lby.get((p["series"], p["pid"], v["ang"]))
+            if src is None:
+                raise SystemExit("找不到线稿姿势源: %r %s" % (p["id"], v["ang"]))
+            plan.append({
+                "src": src["thumb_url"],
+                "dst": v["thumb"],
+                "referer": POSE_LINE_REFERER,
+                "kind": "image",
+                "max": 0,
+                "quality": 82,
+                "format": "webp",
+            })
+            plan.append({
+                "src": src["full_url"],
+                "dst": v["full"],
+                "referer": POSE_LINE_REFERER,
+                "kind": "image",
+                "max": POSE_FULL_MAX,
+                "quality": POSE_FULL_Q,
+                "format": "webp",
+            })
+
     return plan
 
 
 def main():
     costume = build_costume()
-    pose = build_pose()
-    plan = build_plan(costume, pose)
+    pose = build_pose("depth")
+    pose_line = build_pose("line")
+    plan = build_plan(costume, pose, pose_line)
 
     index = {
-        "version": 1,
+        "version": 2,
         "costume": costume,
         "pose": pose,
+        "poseLine": pose_line,
     }
     write_json(os.path.join(DATA, "index.json"), index)
     write_json(os.path.join(DATA, "asset-plan.json"), plan)
 
     print("costume items:", len(costume["items"]))
     print("pose poses:", len(pose["poses"]), "views:", sum(len(p["views"]) for p in pose["poses"]))
+    print("pose-line poses:", len(pose_line["poses"]), "views:", sum(len(p["views"]) for p in pose_line["poses"]))
     print("asset plan entries:", len(plan))
     print("index.json bytes:", os.path.getsize(os.path.join(DATA, "index.json")))
     print("asset-plan.json bytes:", os.path.getsize(os.path.join(DATA, "asset-plan.json")))

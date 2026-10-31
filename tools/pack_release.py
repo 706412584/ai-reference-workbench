@@ -68,7 +68,7 @@ def main():
     os.makedirs(OUT_DIR, exist_ok=True)
     packs = []
 
-    for sub in ("costume", "pose"):
+    for sub in ("costume", "pose", "pose-line"):
         files = collect(sub)
         if not files:
             print("跳过（无文件）:", sub)

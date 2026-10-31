@@ -53,6 +53,14 @@ export interface PoseItem {
   views: PoseView[]
 }
 
+export interface PoseData {
+  series: PoseSeries[]
+  cats: PoseCat[]
+  poses: PoseItem[]
+  angZh: Record<string, string>
+  angOrder: string[]
+}
+
 export interface IndexData {
   version: number
   costume: {
@@ -62,16 +70,14 @@ export interface IndexData {
     tagZh: Record<string, string>
     tagJa: Record<string, string>
   }
-  pose: {
-    series: PoseSeries[]
-    cats: PoseCat[]
-    poses: PoseItem[]
-    angZh: Record<string, string>
-    angOrder: string[]
-  }
+  pose: PoseData
+  /** 线稿版姿势（POSE-DB-01），与 pose 同构 */
+  poseLine?: PoseData
 }
 
 export type Library = 'costume' | 'pose'
+/** 姿势库变体：depth 深度图 / line 线稿 */
+export type PoseVariant = 'depth' | 'line'
 
 export interface FavRef {
   kind: Library
