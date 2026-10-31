@@ -1,0 +1,29 @@
+plugins { id 'com.android.application' }
+
+android {
+  namespace 'dev.workbench'
+  compileSdk 35
+
+  defaultConfig {
+    applicationId 'dev.workbench'
+    minSdk 24
+    targetSdk 34
+    versionCode 1
+    versionName '0.1'
+  }
+
+  buildTypes {
+    debug {
+      minifyEnabled false
+    }
+    release {
+      minifyEnabled false
+      signingConfig signingConfigs.debug
+    }
+  }
+
+  // 图片已是 WebP，再压缩无收益且会拖慢安装
+  androidResources {
+    noCompress 'webp', 'png', 'jpg', 'jpeg', 'json'
+  }
+}

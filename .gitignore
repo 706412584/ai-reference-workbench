@@ -1,0 +1,39 @@
+# ── 依赖与构建产物 ──
+node_modules/
+dist/
+*.tsbuildinfo
+
+# ── 图片素材 ──
+# 版权归原作者，禁止再分发；使用者自行运行 tools/fetch_assets.py 获取。
+public/assets/
+.cache/
+
+# ── 发布包（上传到 Gitee Release，不入库） ──
+dist-release/
+
+# ── 本地测试 ──
+.serve/
+.serve-packs/
+.probe/
+.icon/
+.sel.css
+
+# ── Android 构建 ──
+shell-android/.gradle/
+shell-android/build/
+shell-android/app/build/
+shell-android/local.properties
+shell-android/app/src/main/assets/www/
+
+# ── Windows 构建 ──
+shell-windows/bin/
+shell-windows/obj/
+shell-windows/publish/
+
+# ── 系统与编辑器 ──
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.log

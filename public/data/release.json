@@ -1,0 +1,26 @@
+{
+ "version": "1.0.0",
+ "packs": [
+  {
+   "name": "costume",
+   "file": "assets-costume.zip",
+   "bytes": 53250634,
+   "sha256": "6591200f0c38f8a931aac91a59f189de74703c7fec9a576fa78502a757c55a96",
+   "url": "https://gitee.com/wu-yongchengsvip_admin/android-code-studio/releases/download/v1.0.0/assets-costume.zip"
+  },
+  {
+   "name": "pose",
+   "file": "assets-pose.zip",
+   "bytes": 21909046,
+   "sha256": "16eb17fe59711a05f33f9b6ba05841a19773b162e2a5dd74e0451b2a2afe28ec",
+   "url": "https://gitee.com/wu-yongchengsvip_admin/android-code-studio/releases/download/v1.0.0/assets-pose.zip"
+  },
+  {
+   "name": "data",
+   "file": "data.zip",
+   "bytes": 696283,
+   "sha256": "c2b0e8702824233fac69b49f9c547d392765db93ece5a2e5ef63ab09fbf01307",
+   "url": "https://gitee.com/wu-yongchengsvip_admin/android-code-studio/releases/download/v1.0.0/data.zip"
+  }
+ ]
+}
